@@ -16,7 +16,7 @@ pygame.display.set_caption("Trash Tosser")
 done = False
 
 clock = pygame.time.Clock()
-
+trail=[]
 class Ball(pygame.sprite.Sprite):
     def __init__(self, x, y, vx, vy):
         super().__init__()
@@ -33,10 +33,14 @@ class Ball(pygame.sprite.Sprite):
     def draw(self, surface):
         # Draw circle and line showing velocity vector
         pygame.draw.circle(surface, self.color, self.pos, 20)
-        pygame.draw.line(screen, (255, 255, 255), self.pos, self.pos + (Vector2(self.vel.x,-self.vel.y) * 5), width=5)
+        #pygame.draw.line(screen, (255, 255, 255), self.pos, self.pos + (Vector2(self.vel.x,-self.vel.y) * 5), width=5)
+        if self.paused:
+            for i in range(20):
+                pygame.draw.circle(surface,(255,255,255),(self.pos+i*Vector2(self.vel.x,-self.vel.y+0.5*i*GRAVITY)), 5-i/4)
 
     def update(self):
         # Only calculate if the ball is moving and not paused
+
         if not self.paused and self.vel != Vector2(0,0):
             # Apply velocity
             self.pos += Vector2(self.vel.x,-self.vel.y)
@@ -54,6 +58,14 @@ class Ball(pygame.sprite.Sprite):
                     self.vel.y *= -1
                     self.vel.scale_to_length(self.vel.magnitude()*0.66)
 
+    def reset(self):
+        self.pos = Vector2(20, 400)
+        self.vel = Vector2(10, 10)
+        self.vel.scale_to_length(15)
+        self.paused = True
+        self.scalar = 15
+
+
 
 ball = Ball(20,400,10,10)
 ball.vel.scale_to_length(15)
@@ -67,8 +79,7 @@ while not done:
                 # Fire the ball
                 ball.paused = False
             if event.key==pygame.K_r:
-                # Reset ball pos
-                ball = Ball(20,400,10,10)
+                ball.reset()
 
     keys = pygame.key.get_pressed()
     if ball.paused:
@@ -95,9 +106,6 @@ while not done:
 
     screen.fill((0,0,255))
     ball.draw(screen)
-
-
-
     # Flip display and limit to 60 fps
     pygame.display.update()
 
