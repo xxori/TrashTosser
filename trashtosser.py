@@ -17,6 +17,7 @@ SIZE_Y = 500
 GRAVITY = 1
 
 FRAMECAP = 60
+CHECK_VECTOR = Vector2(1,0)
 
 screen = pygame.display.set_mode((SIZE_X,SIZE_Y))
 pygame.display.set_caption("Trash Tosser")
@@ -45,6 +46,8 @@ class Ball(pygame.sprite.Sprite):
 
         self.trajectory = []
         self.old_trajectory = []
+
+        self.scored = False
 
 
     def draw(self, surface):
@@ -76,7 +79,7 @@ class Ball(pygame.sprite.Sprite):
             # If the ball is off screen
             if self.pos.y >= 480 - (self.vel.y * dt):
                 # If the ball is going very slow then don't flip it and set the velocity to 0 instead
-                if abs(self.vel.x) < 5 and abs(self.vel.y) > -5 and self.pos.y > 450:
+                if abs(self.vel.x) < 5 and abs(self.vel.y) < 5 and self.pos.y > 450:
                     self.vel = Vector2(0, 0)
                     self.pos.y = 480
                 # Otherwise, flip the y velocity and times the velocity by 2/3 of it's current
@@ -115,13 +118,12 @@ class Bin:
             ball.flipx()
 
         if self.goal_rect.colliderect(ball.rect):
+            ball.scored = True
             ball.reset()
 
 
-
-
 ball = Ball(20,400,10,-10)
-trashcan = Bin(500,300)
+trashcan = Bin(600,300)
 
 last_frame = time.time()
 
@@ -136,7 +138,6 @@ while not done:
                 ball.old_trajectory = ball.trajectory
             if event.key==pygame.K_r:
                 ball.reset()
-                trail = []
 
     keys = pygame.key.get_pressed()
 
@@ -148,10 +149,10 @@ while not done:
     if ball.paused:
         # Rotate with left and right arrows
         if keys[pygame.K_LEFT]:
-            if ball.vel.angle_to(ball.pos) < 180:
+            if ball.vel.angle_to(CHECK_VECTOR) < 90:
                 ball.vel.rotate_ip(-mod)
         if keys[pygame.K_RIGHT]:
-            if ball.vel.angle_to(ball.pos) > 90:
+            if ball.vel.angle_to(CHECK_VECTOR) > 0:
                 ball.vel.rotate_ip(mod)
 
         # Change power with up and down
