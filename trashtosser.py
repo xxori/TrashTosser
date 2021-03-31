@@ -20,10 +20,13 @@ ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(appid)
 pygame.init()
 pygame.font.init()
 
-font = lambda size: pygame.font.Font(pygame.font.get_default_font(), size)
+font = lambda size: pygame.font.Font(pygame.font.get_default_font(), size) # Font helper function that returns font of given size
+
+# Game window dimensions
 SIZE_X = 1120
 SIZE_Y = 560
 
+# Constant rate of gravity which is applied by moving the trash object down each frame
 GRAVITY = 1
 
 FRAMECAP = 60 # Target framerate
@@ -56,7 +59,7 @@ class GameObject(pygame.sprite.Sprite):
 
     """
     def __init__(self, parent, x, y, image=None, angle=0):
-        super(GameObject, self).__init__()
+        super(GameObject, self).__init__() # Initialise the parent object
 
         self.game = parent
         self.pos = Vector2(x,y)
@@ -66,7 +69,7 @@ class GameObject(pygame.sprite.Sprite):
         self.image = image or pygame.Surface((0, 0))
         self.rect = self.image.get_rect()
 
-        self.global_rect = pygame.Rect(self.rect.x+x,self.rect.y+y,self.rect.w,self.rect.h)
+        self.global_rect = pygame.Rect(self.rect.x+x,self.rect.y+y,self.rect.w,self.rect.h) # Add the objects position to its local rect
 
     def update(self, dt, keys):
         """
@@ -155,12 +158,15 @@ class TrashObject(GameObject):
             update(dt: float, keys: list)
                 Overrides the GameObject update function with logic to calculate position, velocity, gravity, and aiming
 
-            flipx(), flipy()
-                Flip the velocity horizontally or vertically. Used in collision and bouncing calculations
+            flipy()
+                Flip the velocity vertically. Used in collision and bouncing calculations
                 Also lower the velocity by a factor of 1/3 as objects lose speed when they bounce
     """
-    def __init__(self, parent, x, y, vx, vy):
-        super().__init__(parent, x, y, sprites.player)
+    def __init__(self, parent, x, y, vx, vy, type):
+        super().__init__(parent, x, y, sprites.trash(type))
+
+        self.type = type
+
         # Position and velocity vectors
         self.pos = Vector2(x,y)
         self.vel = Vector2(vx,vy)
@@ -172,17 +178,15 @@ class TrashObject(GameObject):
         # Scalar for the object so the launch power can be changed
         self.power = 1
 
-        self.TRAJECTORY_BALLS = 20
+        self.TRAJECTORY_BALLS = 15 # Amount of trajectory preciction orbs to display
 
         self.trajectory = []
         self.old_trajectory = []
 
-        self.scored = False
-
         self.collider = pygame.Rect(self.global_rect.x + self.vel.x,
                                     self.global_rect.y + self.vel.y,
                                     self.global_rect.w,
-                                    self.global_rect.h)
+                                    self.global_rect.h) # Collision rect made by adding the velocity to the global rect
 
     def draw(self):
         for dot in self.old_trajectory:
@@ -194,6 +198,11 @@ class TrashObject(GameObject):
         super().draw() # Calling parent draw to draw sprite
 
     def update(self, dt, keys):
+
+        # Set the velocity to zero if the object is outside the game frame so the game can reset quicker
+        if 0 > self.pos.x or self.pos.x > SIZE_X:
+            self.vel = Vector2(0,0)
+
 
         # Calculate the trajectory indicators
         if self.paused:
@@ -240,7 +249,7 @@ class TrashObject(GameObject):
 
             # Change power with up and down by scaling the velocity magnitude by the initial length times the scalar
             if keys[pygame.K_UP]:
-                if self.power < 2:
+                if self.power < 3:
                     self.power += mod * 0.02 * dt
                     self.vel.scale_to_length(self.initial_length * self.power)
             if keys[pygame.K_DOWN]:
@@ -248,24 +257,22 @@ class TrashObject(GameObject):
                     self.power -= mod * 0.02 * dt
                     self.vel.scale_to_length(self.initial_length * self.power)
 
+        # Recalculate the collider rect each update
         self.collider = pygame.Rect(self.pos.x + self.vel.x,
                                     self.pos.y + self.vel.y,
                                     self.global_rect.w,
                                     self.global_rect.h)
     def reset(self):
-        # Resetting the position of the ball
+        # Reset all attributes of the object and generate a new type
         self.pos = Vector2(20, 400)
         self.vel = Vector2(10, -10)
         self.paused = True
         self.power = 1
         self.angle = 0
+        self.type = random.randint(0,2)
+        self.image = sprites.trash(self.type)
 
     # Only flip if the object is moving
-    def flipx(self):
-        if self.vel != Vector2(0,0):
-            self.vel.x *= -1
-            self.vel.y *= 0.66
-            self.vel.x *= 0.8
     def flipy(self):
         if self.vel != Vector2(0,0):
             self.vel.y *= -1
@@ -280,9 +287,6 @@ class Bin(GameObject):
         pos: Vector2
             Position vector of the top left corner relative to the origin
 
-        goal_rect: pygame.Rect
-            Pygame rectangle for the top or the bin or the goal, used to calculate collisions for winning shots
-
         type: int
             Used to represent what type of bin this object is.
             0 represents a landfill bin, 1 represents a recycling bin and 2 represents and organic bin.
@@ -295,78 +299,103 @@ class Bin(GameObject):
 
     """
     def __init__(self, parent, x, bin_type: int):
-        super().__init__(parent, x, SIZE_Y-sprites.BASE_BIN_SIZE)
+        super().__init__(parent, x, SIZE_Y-sprites.BASE_BIN_SIZE,sprites.bin(bin_type))
         self.pos = Vector2(x,SIZE_Y-sprites.BASE_BIN_SIZE)
 
-        # Goal is a bit thinner than main body
-        self.goal_rect = pygame.Rect(self.pos.x,self.pos.y-10,sprites.BASE_BIN_SIZE,10)
-
         self.type = bin_type
-        if bin_type == 0:
-            self.image = sprites.bin("plastic")
-        if bin_type == 1:
-            self.image = sprites.bin("recycling")
-        if bin_type == 2:
-            self.image = sprites.bin("organic")
 
     def check_collision(self, trash: TrashObject):
-        colliderect = pygame.Rect(self.global_rect.x+10,self.global_rect.y+10,self.global_rect.w-20,self.global_rect.h-20)
-        if colliderect.colliderect(trash.collider):
-            trash.flipx()
+        collider = pygame.Rect(self.global_rect.x+10,self.global_rect.y+10,self.global_rect.w-20,self.global_rect.h-20)
 
-        elif self.goal_rect.colliderect(trash.collider):
-            trash.scored = True
-            self.game.score += 1
-            self.game.reset()
+        if collider.colliderect(trash.collider):
+            if self.type == trash.type:
+                return 1
+            else:
+                return 2
 
 class Game:
     def __init__(self):
         self.running = False
-        self.surface = pygame.display.set_mode((SIZE_X,SIZE_Y))
+        self.surface = pygame.display.set_mode((SIZE_X,SIZE_Y)) # The window for all objects to be drawn to
+
+        # Window title and icon
         pygame.display.set_caption("Trash Tosser")
         pygame.display.set_icon(sprites.icon)
 
+        # Clock used to regular framerate
         self.clock = pygame.time.Clock()
 
-        self.trash = TrashObject(self, 20,400,10,-10)
+        self.trash = TrashObject(self, 20,400,10,-10, random.randint(0,2))
         self.obstacles = []
 
         self.score = 0
         self.lives = 3
+
+        # Used to wait a second after the ball stops before restarting
         self.ball_stopped = False
         self.ball_stopped_at = 0
+
+        # Will be overwritten in the game loop
+        self.wrong_bin = (False, False)
 
         self.state = 0
         # 0 = Playing
         # 1 = Game over
 
-        self.last_frame = time.time()
+        self.last_frame = time.time() # The time of the previous frame, used to calculate deltatime
 
 
     def run_until_finished(self):
         self.running = True
+        # Initialise stage
         self.reset()
         while self.running:
+            # Calculate the time since last frame and setting the last frame to now
             current_frame = time.time()
             dt = (current_frame-self.last_frame) * FRAMECAP
             self.last_frame = current_frame
+
+            # Handle keypresses and get currently pressed down keys
             keys = self.handle_events(pygame.event.get())
 
+            # Only calculate game logic if game is running (e.g. not in menu)
             if self.state == 0:
+                scored = False
+
+                # Check the trash objects collision with each bin. Lose a life if the bin type is incorrect and gain a point if it is correct
                 for obstacle in self.obstacles:
-                    obstacle.check_collision(self.trash)
+                    result = obstacle.check_collision(self.trash)
+                    # Represents a point scored and 2 represents a life lost
+                    if result == 1:
+                        self.score += 1
+                        scored = True # Make it so you can't lose a life if you scored already
+                        self.reset()
+                    elif result == 2 and not scored:
+                        if self.lives != 0:
+                            self.reset()
+                        self.lives -= 1
+                        # Display the wrong bin message for three seconds only
+                        self.wrong_bin = (True, time.time())
 
-                self.trash.update(dt, keys)
-
-                self.surface.fill((0,0,128))
-
+                # If the ball isn't moving, wait 1 second before resetting and losing a life
                 if self.trash.vel == Vector2(0,0):
                     if not self.ball_stopped:
                         self.ball_stopped_at = time.time()
                         self.ball_stopped = True
                     if time.time() - self.ball_stopped_at > 1: # Wait 1 second
-                        self.trash.reset()
+                        self.ball_stopped = False
                         self.lives -= 1
+                        if self.lives != 0:
+                            self.reset()
+
+                self.trash.update(dt, keys)
+
+                # Set state to gameover screen if no lives remain
+                if self.lives <= 0:
+                    self.state = 1
+
+                # Fill background in blue before rendering life and score information
+                self.surface.fill((0, 0, 128))
 
                 score_text = font(36).render(f"Score: {self.score}", True,(255,255,255))
                 self.surface.blit(score_text, (SIZE_X-200,50))
@@ -374,24 +403,46 @@ class Game:
                 lives_text = font(36).render(f"Lives: {self.lives}", True, (255,255,255))
                 self.surface.blit(lives_text, (50, 50))
 
-                if self.lives <= 0:
-                    self.state = 1
+                # Check the wrong bin message is being displayed. If it is and it has been 3 seconds since it was shown, stop showing it
+                if self.wrong_bin[0]:
+                    if time.time() - self.wrong_bin[1] > 3:
+                        self.wrong_bin = (False, False)
+                    else:
+                        wrong_bin_text = font(36).render("Wrong Bin!", True, (255,255,255))
+                        self.surface.blit(wrong_bin_text,(300,50))
 
                 for obstacle in self.obstacles:
                     obstacle.draw()
 
                 self.trash.draw()
 
+            # Draw game over screen if state = 1
             elif self.state == 1:
+                self.surface.fill((0, 0, 128))
+
+                score_text = font(36).render(f"Score: {self.score}", True,(255,255,255))
+                self.surface.blit(score_text, (SIZE_X-200,50))
+
                 gameover_text = font(72).render("GAME OVER", True, (255,255,255))
                 self.surface.blit(gameover_text, gameover_text.get_rect(center=(SIZE_X/2,SIZE_Y/2)))
+
                 restart_text = font(36).render("Press R to restart", True, (255,255,255))
                 self.surface.blit(restart_text,restart_text.get_rect(center=(SIZE_X/2,SIZE_Y/2+100)))
 
+            # Update display and cap the framerate
             pygame.display.update()
             self.clock.tick(FRAMECAP)
 
     def handle_events(self, events):
+        """
+        :param events: list:
+        List of pygame events such as keyups, keydowns
+
+        :return keys: list:
+        List of currently pressed down keys
+
+        Handles all pygame events, such as quitting the game, restarting the game if on the game over screen, etc..
+        """
         for event in events:
             if event.type == pygame.QUIT:
                 self.running=False
@@ -408,10 +459,36 @@ class Game:
 
         return pygame.key.get_pressed()
 
+    def gen_bins(self):
+        """Generates bin objects and continually regenerates them until none of them are overlapping"""
+        obstacles = []
+
+        # One bin for each type
+        for type in range(3):
+            collided = False
+            new_bin = Bin(self, random.randint(400,SIZE_X-sprites.BASE_BIN_SIZE*2), type)
+
+            # Check collision with each other existing bin
+            for bin in obstacles:
+                if bin.global_rect.colliderect(new_bin.global_rect):
+                    collided = True
+
+            # Keep regenerating and checking until it doesnt overlap any other bin
+            while collided:
+                new_bin = Bin(self, random.randint(400, SIZE_X - sprites.BASE_BIN_SIZE * 2), type)
+                collided = False
+                for bin in obstacles:
+                    if bin.global_rect.colliderect(new_bin.global_rect):
+                        collided = True
+            obstacles.append(new_bin)
+        self.obstacles = obstacles
+
     def reset(self):
         self.trash.reset()
-        self.obstacles= [Bin(self, random.randint(400,SIZE_X-sprites.BASE_BIN_SIZE*2), 1)]
+        self.gen_bins()
 
+
+# Only start game if file is directly run rather than imported.
 if __name__ == "__main__":
     game = Game()
     game.run_until_finished()
